@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 import os 
+import asyncio
+import re 
 import sqlite3 
 import random
 from py import capy
@@ -13,7 +15,6 @@ intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="capy ", intents=intents)
-
 guild_ids = []
 
 @bot.event
@@ -30,7 +31,7 @@ async def on_ready():
             c.execute("INSERT INTO guilds (guild_id) VALUES (?)", (guild.id,))
             conn.commit()
 
-@bot.event
+bot.event
 async def on_member_join(member): 
     print(f"{member} joined {member.guild}")
     await member.send(f"Welcome to {member.guild}!")
@@ -102,6 +103,72 @@ async def softban(ctx, member: discord.Member, reason = "No reason provided"):
     await ctx.send(f"{member.mention} has been softbanned")
     await ctx.channel.purge(limit=100, check=lambda m: m.author == member)
 
+# Helper function to convert duration string to seconds
+def parse_duration(duration):
+    pattern = r'(?P<months>\d+m)?(?P<days>\d+d)?(?P<hours>\d+h)?(?P<minutes>\d+m)?(?P<seconds>\d+s)?'
+    match = re.match(pattern, duration, re.IGNORECASE)
+
+    if not match:
+        return None
+
+    total_seconds = 0
+    for key, value in match.groupdict().items():
+        if value:
+            if key == 'months':
+                total_seconds += int(value[:-1]) * 2629746  # Seconds in a month (30.44 days)
+            elif key == 'days':
+                total_seconds += int(value[:-1]) * 86400
+            elif key == 'hours':
+                total_seconds += int(value[:-1]) * 3600
+            elif key == 'minutes':
+                total_seconds += int(value[:-1]) * 60
+            elif key == 'seconds':
+                total_seconds += int(value[:-1])
+
+    return total_seconds
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def mute(ctx, member: discord.Member, duration: str, *, reason=None):
+    muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
+    if not muted_role:
+        muted_role = await ctx.guild.create_role(name="Muted")
+        for channel in ctx.guild.channels:
+            await channel.set_permissions(muted_role, send_messages=False)
+
+    seconds = parse_duration(duration)
+    if seconds is None:
+        await ctx.send("Invalid duration format. Use the format: `[months]m [days]d [hours]h [minutes]m [seconds]s`")
+        return
+
+    await member.add_roles(muted_role, reason=reason)
+    await ctx.send(f"{member.mention} has been muted for {duration}. Reason: {reason}")
+
+    await asyncio.sleep(seconds)
+
+    await member.remove_roles(muted_role)
+    await ctx.send(f"{member.mention} has been unmuted.")
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def unmute(ctx, member: discord.Member, *, reason=None):
+    muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
+    if muted_role in member.roles:
+        await member.remove_roles(muted_role, reason=reason)
+        await ctx.send(f"{member.mention} has been manually unmuted. Reason: {reason}")
+    else:
+        await ctx.send(f"{member.mention} is not muted.")
+
+@bot.command()
+async def lockdown(ctx):
+    if ctx.channel.overwrites_for(ctx.guild.default_role).send_messages == False:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=None)
+        await ctx.send(f"{ctx.channel.mention} has been unlocked")
+        return
+    else: 
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
+        await ctx.send(f"{ctx.channel.mention} has been locked down")
+
 @softban.error
 async def softban_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
@@ -136,8 +203,10 @@ bot.help_command = MyNewHelp()
 
 # Gambling commands
 @bot.command()
-async def coinflip(ctx, bet: int):
-    pass
+async def coinflip(ctx):
+    result = random.choice(["Heads", "Tails"])
+    await ctx.send(result)
+
 load_dotenv()
 TOKEN = os.getenv("TOKEN") 
 bot.run(TOKEN)
