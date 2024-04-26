@@ -17,19 +17,31 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="capy ", intents=intents)
 guild_ids = []
 
+# db initialisation below 
+# c.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance INTEGER)')
+
+def initialise_user(user_id):
+    c.execute("INSERT INTO users (user_id, balance) VALUES (?, ?)", (user_id, 0))
+    conn.commit()
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
     print(capy)
     await bot.change_presence(activity=discord.Game(name="capy help"))
-    # check if guild.id is in database, else add to db
-    for guild in bot.guilds:
-        exisiting_guild_ids = c.execute("SELECT guild_id FROM guilds").fetchall()
-        exisiting_guild_ids = [x[0] for x in exisiting_guild_ids]
-        if guild.id not in exisiting_guild_ids:
-            print(f"adding {guild.id} to database") 
-            c.execute("INSERT INTO guilds (guild_id) VALUES (?)", (guild.id,))
-            conn.commit()
+
+@bot.event
+async def on_message(message):
+    # call initialise_user if user is not in the database
+    if not c.execute("SELECT * FROM users WHERE user_id = ?", (message.author.id,)).fetchone():
+        initialise_user(message.author.id)
+    conn.commit()
+
+    # add guild_id to guild_ids list if not already in it
+    if message.guild.id not in guild_ids:
+        guild_ids.append(message.guild.id)
+
+    await bot.process_commands(message)
 
 bot.event
 async def on_member_join(member): 
