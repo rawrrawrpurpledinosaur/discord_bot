@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from pretty_help import PrettyHelp, EmojiMenu
+# from pretty_help import PrettyHelp, EmojiMenu
 import os 
 import asyncio
 import re 
@@ -8,9 +8,13 @@ import sqlite3
 import random
 from py import capy
 from dotenv import load_dotenv
-
+from cogs import Economy  
 conn = sqlite3.connect("database.db")
 c = conn.cursor()
+
+
+
+# shen zhiming is so cool 
 
 intents = discord.Intents.all()
 intents.members = True
@@ -227,7 +231,7 @@ async def balance(ctx, member: discord.Member=None):
     user = c.execute("SELECT * FROM users WHERE user_id = ?", (member.id,)).fetchone()
     balance = user[1]
     await ctx.send(f"{member.mention} has {balance} coins")
-
+ 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setbal(ctx, member: discord.Member=None, amount: int=0):
@@ -292,6 +296,10 @@ async def slots(ctx, bet: int):
         c.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance + bet * 2, ctx.author.id))
         conn.commit()
         await ctx.send(f"{slot1} {slot2} {slot3}! You won {bet * 2} coins")
+    elif slot1 == slot2 or slot1 == slot3 or slot2 == slot3:
+        c.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance + bet, ctx.author.id))
+        conn.commit()
+        await ctx.send(f"{slot1} {slot2} {slot3}! You won {bet} coins")
     else:
         c.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance - bet, ctx.author.id))
         conn.commit()
@@ -302,12 +310,24 @@ async def leaderboard(ctx):
     # show top 10 users by balance
     users = c.execute("SELECT * FROM users ORDER BY balance DESC limit 10").fetchall()
     embed = discord.Embed(title="Leaderboard", color=discord.Color.gold())
+    print(users)
+    # returns a list of tuples with (user_id, balance)
     for index, user in enumerate(users):
         member = ctx.guild.get_member(user[0])
+        print(member)
         embed.add_field(name=f"{index+1}. {member.name}", value=f"{user[1]} coins", inline=False)
     await ctx.send(embed=embed)
 
+# work command to give user random amount of coins between 50 and 300, with a cooldown of 60 seconds
+@bot.command()
+@commands.cooldown(1, 60, commands.BucketType.user)
+async def work(ctx):
+    user = c.execute("SELECT * FROM users WHERE user_id = ?", (ctx.author.id,)).fetchone()
+    balance = user[1]
 
+    c.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance + random.randint(50, 300), ctx.author.id))
+    conn.commit()
+    await ctx.send(f"You worked hard and earned {random.randint(50, 300)} coins")
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN") 
